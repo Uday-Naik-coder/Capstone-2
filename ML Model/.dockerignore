@@ -1,0 +1,19 @@
+# Build-context exclusions for the ML service image (context = this directory).
+# NOTE: src/serving/model is intentionally NOT excluded — the Dockerfile COPYs
+# the bundled pinned model from there.
+
+**/__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Heavy / non-runtime dirs (not COPYed into the image)
+data/
+notebooks/
+mlruns/
+artifacts/
+
+# OS noise
+.DS_Store
+*.log

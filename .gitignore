@@ -1,0 +1,38 @@
+# ---------------------------------------------------------------------------
+# .gitignore  (repo root)
+# ---------------------------------------------------------------------------
+
+# venvs
+.venv/
+venv/
+env/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Big / regenerable artifacts we don't want in git.
+# NOTE: these are intentionally path-scoped (NOT a generic "artifacts/") so the
+# bundled pinned serving model under ML Model/src/serving/model/**/artifacts/
+# stays tracked - the ML service needs it to build & run from a fresh clone.
+ML Model/mlruns/
+ML Model/artifacts/
+ML Model/data/raw/
+ML Model/data/processed/
+
+# Node / MERN
+node_modules/
+npm-debug.log*
+.env
+Website/backend/.env
+coverage/
+
+# Local dev / misc
+*.log
