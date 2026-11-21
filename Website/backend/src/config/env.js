@@ -20,6 +20,14 @@ export const env = {
   mlTimeoutMs: intEnv(process.env.ML_TIMEOUT_MS, 5000),
   corsOrigin: process.env.CORS_ORIGIN || '*',
 
+  // Embedded ML (single-image deployments): when true, the server starts the
+  // Python model as a child process on ML_PORT and points the client at it.
+  mlEmbed: boolEnv(process.env.ML_EMBED, false),
+  mlPort: intEnv(process.env.ML_PORT, 8000),
+  mlPython: process.env.ML_PYTHON || 'python3',
+  mlAppDir: process.env.ML_APP_DIR || process.cwd(),
+  mlStartupTimeoutMs: intEnv(process.env.ML_STARTUP_TIMEOUT_MS, 60000),
+
   // Auth
   jwtSecret: process.env.JWT_SECRET || '',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',

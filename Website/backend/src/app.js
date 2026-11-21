@@ -3,6 +3,9 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import swaggerUi from 'swagger-ui-express';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { env } from './config/env.js';
 import { healthRoutes } from './routes/health.routes.js';
@@ -11,6 +14,16 @@ import { authRoutes } from './routes/auth.routes.js';
 import { requireAuth } from './middleware/auth.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
 import { openApiSpec } from './docs/openapi.js';
+
+// Directory containing the built React SPA (single-image deployments). In dev
+// this folder usually does not exist, so static serving is skipped and the API
+// behaves exactly as before.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PUBLIC_DIR = process.env.PUBLIC_DIR
+  ? path.resolve(process.env.PUBLIC_DIR)
+  : path.resolve(__dirname, '..', 'public');
+const SPA_INDEX = path.join(PUBLIC_DIR, 'index.html');
+const HAS_SPA = fs.existsSync(SPA_INDEX);
 
 export function createApp({
   mlClient = null,
@@ -46,6 +59,18 @@ export function createApp({
   // Protected
   const gate = authRequired ? requireAuth : (req, res, next) => next();
   app.use('/api/predict', gate, predictRoutes(deps));
+
+  // Static SPA (single-image deployments): serve the built React app and fall
+  // back to index.html for client-side routes. API routes above always win.
+  if (HAS_SPA) {
+    app.use(express.static(PUBLIC_DIR));
+    app.use((req, res, next) => {
+      if (req.method !== 'GET' || req.path.startsWith('/api')) return next();
+      return res.sendFile(SPA_INDEX, (err) => {
+        if (err) next();
+      });
+    });
+  }
 
   app.use(notFoundHandler);
   app.use(errorHandler);

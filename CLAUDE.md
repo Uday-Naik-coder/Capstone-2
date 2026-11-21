@@ -55,9 +55,17 @@ cd Website/frontend && npm run dev     # Vite on :5174
 ### Docker
 ```bash
 cp .env.example .env                 # set JWT_SECRET
-docker compose up --build            # mongo + ml + backend + frontend, http://localhost:8080
+docker compose up --build            # mongo + single app image, http://localhost:8080
 docker compose config --quiet        # validate compose file
 ```
+
+The **root `Dockerfile`** builds one image (React SPA + Express API + Python ML
+model) tagged `udaynaik07/capstone-2`. Inside it the backend runs from
+`/app/web` (serving the SPA from `/app/web/public`), the ML code from `/app/ml`,
+and the pinned model from `/app/model` (the absolute path `inference.py` tries
+first). `ML_EMBED=1` makes `server.js` start `uvicorn` as a child on
+`127.0.0.1:8000`. Keep those paths in sync if you touch the Dockerfile,
+`server.js`, or `inference.py`.
 
 ## Architecture notes
 
@@ -92,5 +100,5 @@ docker compose config --quiet        # validate compose file
 
 - Frontend is JavaScript (not TypeScript).
 - Never commit secrets (`.env` is git-ignored; use `.env.example`).
-- The committed model under `ML Model/src/serving/model/` is required for the ML
+- The committed model under `ML Model/src/serving/model/` is required for the app
   image to build and run from a fresh clone — keep it tracked.

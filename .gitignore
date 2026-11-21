@@ -22,6 +22,7 @@ __pycache__/
 # NOTE: these are intentionally path-scoped (NOT a generic "artifacts/") so the
 # bundled pinned serving model under ML Model/src/serving/model/**/artifacts/
 # stays tracked - the ML service needs it to build & run from a fresh clone.
+mlruns/
 ML Model/mlruns/
 ML Model/artifacts/
 ML Model/data/raw/

@@ -17,12 +17,18 @@
 **/node_modules/
 npm-debug.log*
 **/coverage/
+**/dist/
 
 # Version control / OS noise
 .git/
 .gitignore
 .github/
+.kilo/
 .DS_Store
+
+# Secrets (never bake into the image)
+.env
+**/.env
 
 # Large data & notebooks (not needed at build/runtime)
 ML Model/data/

@@ -1,8 +1,10 @@
 # Telco Customer Churn — MERN + ML
 
-A full-stack customer-churn prediction application. A React SPA talks to an
-Express API, which proxies to a Python (FastAPI) inference service backed by a
-pinned, MLflow-tracked XGBoost model.
+A full-stack customer-churn prediction application. A React SPA is served by an
+Express API, which calls a Python (FastAPI) inference service backed by a pinned,
+MLflow-tracked XGBoost model. **All of this ships in a single Docker image** —
+the Node server serves the built SPA and runs the Python model as a child
+process, so there is one container to build, push, and deploy.
 
 ## Repository layout
 
@@ -20,26 +22,33 @@ pinned, MLflow-tracked XGBoost model.
 │   ├── mlruns/              # local MLflow tracking (git-ignored)
 │   ├── artifacts/           # shared preprocessing artifacts (git-ignored)
 │   └── requirements.txt     # full ML pipeline dependencies
-├── docker-compose.yml       # one-command local stack (mongo + ml + backend + frontend)
+├── Dockerfile                # single image: build SPA + bundle Node API + Python ML model
+├── docker-compose.yml       # one-command local stack (mongo + single app image)
 ├── Jenkinsfile              # Jenkins CI/CD pipeline
-├── .github/workflows/ci.yml # GitHub Actions: build & push the ML image
+├── .github/workflows/ci.yml # GitHub Actions: build & push the capstone-2 image
 └── .env.example             # environment template
 ```
 
 ## Architecture
 
+One container runs two runtimes:
+
 ```
-Browser ──► React SPA (nginx) ──► Express API ──► FastAPI ML service ──► pinned XGBoost model
-   :8080            :80              :4000            :8000
+Browser ──► Express API (serves built SPA + /api) ──► Python ML (child process) ──► pinned XGBoost model
+   :8080            :4000 (same container)              :8000 (127.0.0.1)
 ```
 
 - **Frontend** — React + Vite + Tailwind. JWT + Google OAuth login, churn form,
-  prediction result. nginx serves the built SPA and proxies `/api` to the backend.
-- **Backend** — Express (ESM). Auth (JWT + Google OAuth), request validation,
-  and a proxy to the ML service. MongoDB-backed user store.
+  prediction result. Built with Vite; Express serves the static bundle from
+  `public/` and falls back to `index.html` for client-side routes.
+- **Backend** — Express (ESM). Auth (JWT + Google OAuth), request validation, and
+  a proxy to the ML service. MongoDB-backed user store.
 - **ML service** — FastAPI exposing `GET /health` and `POST /predict`. Loads the
   bundled pinned production model and reuses the unchanged inference pipeline.
   Predictions return a label: `"Likely to churn"` / `"Not likely to churn"`.
+  In the single image it runs as a child process on `127.0.0.1:8000` (enabled by
+  `ML_EMBED=1`); in local dev it can still run as a standalone process and the
+  backend reaches it via `ML_SERVICE_URL`.
 
 ## Quick start (Docker — recommended)
 
@@ -91,8 +100,17 @@ cd Website/frontend && npm test && npm run build
 
 ## CI/CD
 
-- **GitHub Actions** (`.github/workflows/ci.yml`): on push to `main`, builds and
-  pushes the ML service image to Docker Hub.
+- **GitHub Actions** (`.github/workflows/ci.yml`): on push to `main`, builds the
+  single root `Dockerfile` and pushes `udaynaik07/capstone-2` (tagged `latest`
+  and by git sha) to Docker Hub.
 - **Jenkins** (`Jenkinsfile`): runs backend tests + frontend build, builds the
-  three MERN images, and (on `main`) pushes to Docker Hub and optionally runs
-  `docker compose up`.
+  single application image, and (on `main`) pushes `udaynaik07/capstone-2` to
+  Docker Hub and optionally runs `docker compose up`.
+
+### Building / running the image directly
+
+```bash
+docker build -t udaynaik07/capstone-2:latest .
+docker run --rm -p 8080:4000 --env-file .env udaynaik07/capstone-2:latest
+# open http://localhost:8080
+```

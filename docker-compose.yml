@@ -1,7 +1,7 @@
-# Docker Compose deployment for the Telco Churn MERN app.
+# Docker Compose deployment for the Telco Churn app.
 #
-# Builds the MERN images (telco-ml / telco-backend / telco-frontend) and wires
-# them together behind an nginx reverse proxy.
+# ONE application image (React SPA + Express API + embedded Python ML model)
+# plus MongoDB. Built from the repository root via the single root Dockerfile.
 #
 # Quick start:
 #   cp .env.example .env      # then set JWT_SECRET (and optionally the rest)
@@ -9,10 +9,8 @@
 #   open http://localhost:${HTTP_PORT:-8080}
 #
 # Services:
-#   mongo     -> MongoDB (persistent volume)
-#   ml        -> Python FastAPI churn service (pinned model, /health + /predict)
-#   backend   -> Express API (auth + validation + ML proxy)
-#   frontend  -> nginx serving the built React SPA, proxying /api -> backend
+#   mongo -> MongoDB (persistent volume)
+#   app   -> single container: built SPA (served by Express) + API + Python model
 
 services:
   mongo:
@@ -27,40 +25,24 @@ services:
       retries: 10
       start_period: 20s
 
-  ml:
+  app:
     build:
-      context: "./ML Model"
-      dockerfile: services/ml/Dockerfile
-    image: telco-ml:${IMAGE_TAG:-latest}
-    restart: unless-stopped
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status==200 else 1)",
-        ]
-      interval: 15s
-      timeout: 6s
-      retries: 10
-      start_period: 40s
-
-  backend:
-    build:
-      context: ./Website/backend
-    image: telco-backend:${IMAGE_TAG:-latest}
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_GOOGLE_CLIENT_ID: "${VITE_GOOGLE_CLIENT_ID:-}"
+    image: udaynaik07/capstone-2:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       mongo:
-        condition: service_healthy
-      ml:
         condition: service_healthy
     environment:
       NODE_ENV: production
       PORT: "4000"
       MONGODB_URI: mongodb://mongo:27017/telco_churn
-      ML_SERVICE_URL: http://ml:8000
+      ML_EMBED: "1"
+      ML_SERVICE_URL: http://127.0.0.1:8000
+      ML_PORT: "8000"
       ML_TIMEOUT_MS: "5000"
       CORS_ORIGIN: "${CORS_ORIGIN:-*}"
       JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set (copy .env.example to .env)}"
@@ -69,20 +51,8 @@ services:
       AUTH_ADMIN_EMAIL: "${AUTH_ADMIN_EMAIL:-}"
       AUTH_ADMIN_PASSWORD: "${AUTH_ADMIN_PASSWORD:-}"
       AUTH_REQUIRED: "${AUTH_REQUIRED:-true}"
-    expose:
-      - "4000"
-
-  frontend:
-    build:
-      context: ./Website/frontend
-      args:
-        VITE_GOOGLE_CLIENT_ID: "${VITE_GOOGLE_CLIENT_ID:-}"
-    image: telco-frontend:${IMAGE_TAG:-latest}
-    restart: unless-stopped
-    depends_on:
-      - backend
     ports:
-      - "${HTTP_PORT:-8080}:80"
+      - "${HTTP_PORT:-8080}:4000"
 
 volumes:
   mongo-data:
