@@ -11,6 +11,7 @@ def tune_model(X, y):
         y (pd.Series): Target.
     """
     def objective(trial):
+        # Sample XGBoost tree structure and regularization hyperparameters for this trial
         params = {
             "n_estimators": trial.suggest_int("n_estimators", 300, 800),
             "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.2),
@@ -22,9 +23,11 @@ def tune_model(X, y):
             "eval_metric": "logloss"
         }
         model = XGBClassifier(**params)
+        # Evaluate using 3-fold cross-validation; optimize recall to catch churners
         scores = cross_val_score(model, X, y, cv=3, scoring="recall")
         return scores.mean()
 
+    # Run Bayesian optimization (TPE) to maximize mean cross-validated recall
     study = optuna.create_study(direction="maximize")
     study.optimize(objective, n_trials=20)
 

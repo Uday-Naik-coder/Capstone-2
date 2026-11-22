@@ -14,25 +14,31 @@ def train_model(df: pd.DataFrame, target_col: str):
         df (pd.DataFrame): Feature dataset.
         target_col (str): Name of the target column.
     """
+    # Separate predictor features from the binary churn target
     X = df.drop(columns=[target_col])
     y = df[target_col]
 
+    # Hold out 20% of records for validation with a fixed seed for reproducibility
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
 
+    # Configure XGBoost classifier using log-loss for binary churn classification
     model = XGBClassifier(
         n_estimators=300,
         learning_rate=0.1,
         max_depth=6,
         random_state=42,
-        n_jobs=-1,
+        n_jobs=-1,              # Use all available CPU cores during training
         eval_metric="logloss"
     )
 
+    # Wrap training and evaluation inside an MLflow run for experiment tracking
     with mlflow.start_run():
         # Train model
         model.fit(X_train, y_train)
+
+        # Generate test-set predictions and compute classification metrics
         preds = model.predict(X_test)
         acc = accuracy_score(y_test, preds)
         rec = recall_score(y_test, preds)
