@@ -13,25 +13,25 @@ def preprocess_data(df: pd.DataFrame, target_col: str = "Churn") -> pd.DataFrame
     # tidy headers
     df.columns = df.columns.str.strip()  # Remove leading/trailing whitespace
 
-    # drop ids if present
+    # drop ids if present (unique identifiers carry no predictive signal and leak noise)
     for col in ["customerID", "CustomerID", "customer_id"]:
         if col in df.columns:
             df = df.drop(columns=[col])
 
-    # target to 0/1 if it's Yes/No
+    # target to 0/1 if it's Yes/No (strip whitespace before mapping)
     if target_col in df.columns and df[target_col].dtype == "object":
         df[target_col] = df[target_col].str.strip().map({"No": 0, "Yes": 1})
 
-    # TotalCharges often has blanks in this dataset -> coerce to float
+    # TotalCharges often has blanks in this dataset -> coerce to float (blanks become NaN)
     if "TotalCharges" in df.columns:
         df["TotalCharges"] = pd.to_numeric(df["TotalCharges"], errors="coerce")
 
-    # SeniorCitizen should be 0/1 ints if present
+    # SeniorCitizen should be 0/1 ints if present (default missing values to 0)
     if "SeniorCitizen" in df.columns:
         df["SeniorCitizen"] = df["SeniorCitizen"].fillna(0).astype(int)
 
     # simple NA strategy:
-    # - numeric: fill with 0
+    # - numeric: fill with 0 (handles coerced blank TotalCharges for new customers)
     # - others: leave for encoders to handle (get_dummies ignores NaN safely)
     num_cols = df.select_dtypes(include=["number"]).columns
     df[num_cols] = df[num_cols].fillna(0)
