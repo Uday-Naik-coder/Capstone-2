@@ -56,9 +56,69 @@ class TelcoChurnFullSuite(BaseCase):
             str(value),
         )
 
+    def test_register_login_predict_default(self):
+        email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
+        self._open_app()
+        self._register(email)
+        self._predict()
+        self.wait_for_text("Not likely to churn", timeout=30)
+
+    def test_logout_then_relogin_registered_account(self):
+        email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
+        self._open_app()
+        self._register(email)
+        self._logout()
+        self._login(email)
+        self._predict()
+        self.wait_for_text("Not likely to churn", timeout=30)
+
     def test_protected_route_shows_login_when_unauthenticated(self):
         self._open_app()
         self.assert_element_visible("//button[normalize-space()='Sign in']")
+
+    def test_invalid_login_wrong_password_shows_error(self):
+        email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
+        self._open_app()
+        self._register(email)
+        self._logout()
+        self.wait_for_element_visible("//button[normalize-space()='Sign in']", timeout=30)
+        self.type("input[type='email']", email)
+        self.type("input[type='password']", "WrongPassword!")
+        self.click("//button[normalize-space()='Sign in']")
+        self.wait_for_element_visible("//p[contains(@class, 'text-red-700')]", timeout=15)
+
+    def test_invalid_register_duplicate_email_shows_error(self):
+        email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
+        self._open_app()
+        self._register(email)
+        self._logout()
+        self.click("//button[normalize-space()='Create one']")
+        self.wait_for_element_visible("input[placeholder='Jane Doe']", timeout=15)
+        self.type("input[placeholder='Jane Doe']", "E2E User")
+        self.type("input[type='email']", email)
+        self.type("input[type='password']", PASSWORD)
+        self.click("//button[normalize-space()='Create account']")
+        self.wait_for_element_visible("//p[contains(@class, 'text-red-700')]", timeout=15)
+
+    def test_toggle_between_login_and_register_modes(self):
+        self._open_app()
+        self.click("//button[normalize-space()='Create one']")
+        self.wait_for_element_visible("input[placeholder='Jane Doe']", timeout=15)
+        self.click("//button[normalize-space()='Sign in']")
+        self.wait_for_element_visible("input[placeholder='you@example.com']", timeout=15)
+
+    def test_session_persists_on_page_refresh(self):
+        email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
+        self._open_app()
+        self._register(email)
+        self.refresh()
+        self.wait_for_element_visible("//button[normalize-space()='Predict churn']", timeout=30)
+
+    def test_user_email_shown_in_header_after_login(self):
+        email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
+        self._open_app()
+        self._register(email)
+        self.wait_for_text(email, timeout=10)
 
 
 
