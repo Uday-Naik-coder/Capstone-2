@@ -450,6 +450,10 @@ No external Docker Hub credentials or remote push configurations are required.
 
 Builds use the single root `Dockerfile`.
 
+**Jenkins agent prerequisites:**
+- Windows/PowerShell-capable Jenkins agent with Docker Engine / Docker Desktop running (the `Jenkinsfile` uses `powershell` steps and mounts `Website/backend` and `Website/frontend` into `node:20-bookworm-slim` containers).
+- Optional `VITE_GOOGLE_CLIENT_ID` environment variable configured in Jenkins if building the SPA with Google Sign-In enabled.
+
 ---
 
 ## Troubleshooting
