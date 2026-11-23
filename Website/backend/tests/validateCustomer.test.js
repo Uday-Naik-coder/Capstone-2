@@ -79,3 +79,22 @@ test('accumulates multiple errors', () => {
   assert.equal(r.valid, false);
   assert.ok(r.errors.length >= 2);
 });
+
+test('accepts zero boundary values for tenure, MonthlyCharges, and TotalCharges', () => {
+  const r = validateCustomer({
+    ...VALID,
+    tenure: 0,
+    MonthlyCharges: 0,
+    TotalCharges: 0,
+  });
+  assert.equal(r.valid, true);
+  assert.equal(r.value.tenure, 0);
+  assert.equal(r.value.MonthlyCharges, 0);
+  assert.equal(r.value.TotalCharges, 0);
+});
+
+test('rejects negative TotalCharges', () => {
+  const r = validateCustomer({ ...VALID, TotalCharges: -10.5 });
+  assert.equal(r.valid, false);
+  assert.ok(r.errors.some((e) => e.loc[0] === 'TotalCharges'));
+});
