@@ -454,6 +454,10 @@ for details.
 
 Builds use the single root `Dockerfile`.
 
+**Credential & environment checklist:**
+- `dockerhub-cred`: Jenkins username/password credential for Docker Hub push when `PUSH=true`.
+- `env-file` (optional): Secret file credential injected during the `Deploy` stage (`DEPLOY=true`) so `JWT_SECRET` and OAuth keys are never committed.
+
 ---
 
 ## Troubleshooting
