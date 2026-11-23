@@ -22,7 +22,6 @@ npm-debug.log*
 # Version control / OS noise
 .git/
 .gitignore
-.github/
 .kilo/
 .DS_Store
 

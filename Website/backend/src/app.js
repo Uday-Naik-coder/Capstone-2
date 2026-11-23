@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { env } from './config/env.js';
 import { healthRoutes } from './routes/health.routes.js';
 import { predictRoutes } from './routes/predict.routes.js';
+import { historyRoutes } from './routes/history.routes.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { requireAuth } from './middleware/auth.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
@@ -59,6 +60,9 @@ export function createApp({
   // Protected
   const gate = authRequired ? requireAuth : (req, res, next) => next();
   app.use('/api/predict', gate, predictRoutes(deps));
+
+  // Prediction history (always auth-scoped; each route enforces requireAuth).
+  app.use('/api/predictions', historyRoutes(deps));
 
   // Static SPA (single-image deployments): serve the built React app and fall
   // back to index.html for client-side routes. API routes above always win.

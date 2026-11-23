@@ -1,124 +1,167 @@
-// Jenkins CI/CD for the Telco Churn app.
-//
-// Builds ONE application image (React SPA + Express API + embedded Python ML
-// model), runs the test suites, and (on main) optionally pushes to Docker Hub
-// and deploys via docker compose.
-//
-// Requirements on the Jenkins controller:
-//   - A Docker-capable agent with the label 'docker' (docker CLI available).
-//   - Credentials:
-//       * dockerhub-cred  -> Username/Password (or token) for Docker Hub.
-//   - Optional parameters PUSH (default true) and DEPLOY (default false).
-//
-// The Node test/build stages run inside throwaway node:20 containers so the
-// agent needs no global Node install.
 
 pipeline {
-  agent { label 'docker' }
+    agent any
 
-  options {
-    timestamps()
-    disableConcurrentBuilds()
-    buildDiscarder(logRotator(numToKeepStr: '20', artifactNumToKeepStr: '5'))
-  }
-
-  environment {
-    IMAGE_TAG  = "${env.BUILD_NUMBER ?: 'manual'}"
-    DOCKERHUB_USER = 'udaynaik07'
-    APP_IMAGE  = "${DOCKERHUB_USER}/capstone-2"
-    NODE_IMAGE = 'node:20-bookworm-slim'
-  }
-
-  parameters {
-    booleanParam(name: 'PUSH',   defaultValue: true,  description: 'Push the image to Docker Hub (only runs on the main branch).')
-    booleanParam(name: 'DEPLOY', defaultValue: false, description: 'Run `docker compose up -d` after building the image (only on main).')
-  }
-
-  stages {
-    stage('Checkout') {
-      steps {
-        checkout scm
-        sh 'echo "Building ${APP_IMAGE}:${IMAGE_TAG}"'
-      }
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
     }
 
-    stage('Backend: install & test') {
-      steps {
-        sh '''
-          docker run --rm \
-            -v "$WORKSPACE/Website/backend":/app -w /app \
-            "$NODE_IMAGE" sh -c "npm ci && npm test"
-        '''
-      }
+    environment {
+        DOCKERHUB_USER = 'udaynaik07'
+        APP_IMAGE = 'udaynaik07/capstone-2'
+        NODE_IMAGE = 'node:20-bookworm-slim'
     }
 
-    stage('Frontend: install & build') {
-      steps {
-        sh '''
-          docker run --rm \
-            -v "$WORKSPACE/Website/frontend":/app -w /app \
-            -e VITE_GOOGLE_CLIENT_ID="${VITE_GOOGLE_CLIENT_ID:-}" \
-            "$NODE_IMAGE" sh -c "npm ci && npm run build"
-        '''
-      }
+    parameters {
+        booleanParam(
+            name: 'PUSH',
+            defaultValue: true,
+            description: 'Push image to Docker Hub'
+        )
+        booleanParam(
+            name: 'DEPLOY',
+            defaultValue: false,
+            description: 'Deploy using Docker Compose'
+        )
     }
 
-    stage('Build Docker image') {
-      steps {
-        sh '''
-          set -e
-          docker build -f Dockerfile -t "$APP_IMAGE:$IMAGE_TAG" -t "$APP_IMAGE:latest" \
-            --build-arg VITE_GOOGLE_CLIENT_ID="${VITE_GOOGLE_CLIENT_ID:-}" .
-        '''
-      }
-    }
-
-    stage('Push image') {
-      when {
-        allOf {
-          expression { return params.PUSH }
-          expression { return (env.BRANCH_NAME == 'main') }
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Source code checked out automatically by Jenkins'
+            }
         }
-      }
-      steps {
-        script {
-          docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-cred') {
-            sh '''
-              set -e
-              docker push "$APP_IMAGE:$IMAGE_TAG"; docker push "$APP_IMAGE:latest"
+
+        stage('Backend Install and Test') {
+            steps {
+                powershell '''
+                    $ErrorActionPreference = "Stop"
+
+                    docker run --rm `
+                      --mount "type=bind,source=$env:WORKSPACE\\Website\\backend,target=/app" `
+                      -w /app `
+                      $env:NODE_IMAGE `
+                      sh -c "npm ci && npm test"
+
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Backend tests failed"
+                    }
+                '''
+            }
+        }
+
+        stage('Frontend Install and Build') {
+            steps {
+                powershell '''
+                    $ErrorActionPreference = "Stop"
+
+                    docker run --rm `
+                      --mount "type=bind,source=$env:WORKSPACE\\Website\\frontend,target=/app" `
+                      -w /app `
+                      $env:NODE_IMAGE `
+                      sh -c "npm ci && npm run build"
+
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Frontend build failed"
+                    }
+                '''
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                powershell '''
+                    $ErrorActionPreference = "Stop"
+
+                    docker build `
+                      -f Dockerfile `
+                      -t "$env:APP_IMAGE:$env:BUILD_NUMBER" `
+                      .
+
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Docker image build failed"
+                    }
+                '''
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            when {
+                expression { params.PUSH }
+            }
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-cred',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
+                    powershell '''
+                        $ErrorActionPreference = "Stop"
+
+                        $env:DOCKER_PASS | docker login `
+                          -u $env:DOCKER_USER `
+                          --password-stdin
+
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "Docker login failed"
+                        }
+
+                        docker push "$env:APP_IMAGE:$env:BUILD_NUMBER"
+
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "Docker push failed"
+                        }
+
+                        docker logout
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy') {
+            when {
+                expression { params.DEPLOY }
+            }
+            steps {
+                powershell '''
+                    $ErrorActionPreference = "Stop"
+
+                    if (!(Test-Path ".env")) {
+                        throw ".env file not found in workspace"
+                    }
+
+                    $env:IMAGE_TAG = $env:BUILD_NUMBER
+
+                    docker compose -f docker-compose.yml up -d --remove-orphans
+
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Docker Compose deployment failed"
+                    }
+
+                    docker compose -f docker-compose.yml ps
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+
+        failure {
+            echo 'Pipeline failed. Check the console output.'
+        }
+
+        always {
+            powershell '''
+                docker image ls | Select-String "capstone-2"
             '''
-          }
+            cleanWs(deleteDirs: true, notFailBuild: true)
         }
-      }
     }
-
-    stage('Deploy (docker compose)') {
-      when {
-        allOf {
-          expression { return params.DEPLOY }
-          expression { return (env.BRANCH_NAME == 'main') }
-        }
-      }
-      steps {
-        sh '''
-          set -e
-          if [ ! -f .env ]; then
-            echo "ERROR: .env not found on the agent (needed for JWT_SECRET etc.)." >&2
-            exit 1
-          fi
-          IMAGE_TAG="$IMAGE_TAG" docker compose -f docker-compose.yml up -d --remove-orphans
-          docker compose -f docker-compose.yml ps
-        '''
-      }
-    }
-  }
-
-  post {
-    success { echo 'Telco app pipeline succeeded.' }
-    failure { echo 'Telco app pipeline failed.' }
-    always {
-      sh 'docker image ls | grep capstone-2 || true'
-      cleanWs(deleteDirs: true, notFailBuild: true)
-    }
-  }
 }

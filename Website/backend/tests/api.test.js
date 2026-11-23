@@ -163,3 +163,52 @@ test('POST /api/predict rejects an invalid token with 401', async () => {
     assert.equal(res.status, 401);
   });
 });
+
+// Prediction history ------------------------------------------------
+
+test('GET /api/predictions returns 401 without a token', async () => {
+  process.env.JWT_SECRET = 'test-secret';
+  const app = createApp({ mlClient: makeFakeMl(), dbConnected: false, persist: false, authRequired: false });
+  await withServer(app, async (base) => {
+    const res = await fetch(`${base}/api/predictions`);
+    assert.equal(res.status, 401);
+  });
+});
+
+test('GET /api/predictions returns an empty list when persistence is off', async () => {
+  process.env.JWT_SECRET = 'test-secret';
+  const token = signToken({ sub: 'u1', email: 'a@b.c', name: 'A' });
+  const app = createApp({ mlClient: makeFakeMl(), dbConnected: false, persist: false, authRequired: false });
+  await withServer(app, async (base) => {
+    const res = await fetch(`${base}/api/predictions`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.deepEqual(body.items, []);
+  });
+});
+
+test('DELETE /api/predictions/:id returns 401 without a token', async () => {
+  process.env.JWT_SECRET = 'test-secret';
+  const app = createApp({ mlClient: makeFakeMl(), dbConnected: false, persist: false, authRequired: false });
+  await withServer(app, async (base) => {
+    const res = await fetch(`${base}/api/predictions/64b7f0000000000000000000`, {
+      method: 'DELETE',
+    });
+    assert.equal(res.status, 401);
+  });
+});
+
+test('DELETE /api/predictions/:id returns 503 when the database is unavailable', async () => {
+  process.env.JWT_SECRET = 'test-secret';
+  const token = signToken({ sub: 'u1', email: 'a@b.c', name: 'A' });
+  const app = createApp({ mlClient: makeFakeMl(), dbConnected: false, persist: false, authRequired: false });
+  await withServer(app, async (base) => {
+    const res = await fetch(`${base}/api/predictions/64b7f0000000000000000000`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 503);
+  });
+});

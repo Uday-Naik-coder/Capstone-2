@@ -15,6 +15,9 @@ const predictionSchema = new Schema(
     },
     model: { type: String, default: null },
     customer: { type: Schema.Types.Mixed, required: true },
+    // Owner of this prediction (JWT `sub`). Indexed because history is always
+    // queried per-user and sorted by recency.
+    userId: { type: String, default: null, index: true },
   },
   { timestamps: true },
 );

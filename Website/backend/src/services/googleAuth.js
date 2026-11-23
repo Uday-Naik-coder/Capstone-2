@@ -5,13 +5,23 @@ import { env } from '../config/env.js';
 export class GoogleAuthError extends Error {}
 
 let client = null;
+
+// Resolve the client ID live (prefer a runtime override), mirroring how
+// tokenService reads JWT_SECRET. This keeps config testable and lets an empty
+// value explicitly disable Google login regardless of what was baked at import.
+function clientId() {
+  return process.env.GOOGLE_CLIENT_ID !== undefined
+    ? process.env.GOOGLE_CLIENT_ID
+    : env.googleClientId;
+}
+
 function getClient() {
-  if (!client) client = new OAuth2Client(env.googleClientId);
+  if (!client) client = new OAuth2Client(clientId());
   return client;
 }
 
 export function googleConfigured() {
-  return Boolean(env.googleClientId);
+  return Boolean(clientId());
 }
 
 /**
@@ -31,7 +41,7 @@ export async function verifyGoogleCredential(credential) {
   try {
     ticket = await getClient().verifyIdToken({
       idToken: credential,
-      audience: env.googleClientId,
+      audience: clientId(),
     });
   } catch (err) {
     throw new GoogleAuthError(`Invalid Google credential: ${err.message}`);

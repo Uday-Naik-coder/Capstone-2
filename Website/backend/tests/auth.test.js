@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 
 import { createApp } from '../src/app.js';
 
-// Local test configuration (read live by tokenService / auth controller).
+// Local test configuration (read live by tokenService / googleAuth).
 process.env.JWT_SECRET = 'test-secret';
 process.env.AUTH_ADMIN_EMAIL = 'admin@telco.local';
 process.env.AUTH_ADMIN_PASSWORD = 'secret123';
-delete process.env.GOOGLE_CLIENT_ID;
+// Force Google login OFF so the "not configured" branch is exercised even when
+// a real GOOGLE_CLIENT_ID is present in the local .env.
+process.env.GOOGLE_CLIENT_ID = '';
 
 function makeFakeMl() {
   return {

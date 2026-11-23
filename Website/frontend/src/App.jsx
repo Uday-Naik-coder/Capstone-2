@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { getHealth } from './api.js';
 import { CustomerForm } from './components/CustomerForm.jsx';
+import { HistoryPanel } from './components/HistoryPanel.jsx';
 import { useAuth } from './auth/AuthContext.jsx';
 import { ProtectedRoute } from './auth/ProtectedRoute.jsx';
 
@@ -33,6 +34,7 @@ function HealthBadge() {
 
 function AppShell() {
   const { user, logout } = useAuth();
+  const [tab, setTab] = useState('predict'); // predict | history
 
   return (
     <div className="min-h-full bg-slate-50">
@@ -57,10 +59,33 @@ function AppShell() {
             </div>
           </div>
         </div>
+
+        <div className="mx-auto max-w-3xl px-6">
+          <nav className="flex gap-1">
+            {[
+              { key: 'predict', label: 'Predict' },
+              { key: 'history', label: 'History' },
+            ].map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setTab(t.key)}
+                className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold ${
+                  tab === t.key
+                    ? 'border-indigo-600 text-indigo-600'
+                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </nav>
+        </div>
       </header>
 
       <main className="px-6 py-8">
-        <CustomerForm />
+        {/* Keyed so each tab switch remounts and refetches fresh data. */}
+        {tab === 'predict' ? <CustomerForm key="predict" /> : <HistoryPanel key="history" />}
       </main>
     </div>
   );

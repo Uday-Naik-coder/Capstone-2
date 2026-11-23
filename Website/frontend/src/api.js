@@ -109,6 +109,40 @@ export async function getMe() {
   return { ok: false, status: res.status };
 }
 
+// History ----------------------------------------------------------
+
+export async function getHistory() {
+  const res = await fetch('/api/predictions', { headers: authHeaders() });
+
+  if (res.status === 401) {
+    clearSession();
+    return { ok: false, status: 401, error: 'Session expired. Please sign in again.', items: [] };
+  }
+
+  if (res.ok) {
+    const body = await res.json().catch(() => ({}));
+    return { ok: true, status: res.status, items: Array.isArray(body.items) ? body.items : [] };
+  }
+
+  return { ok: false, status: res.status, error: await parseError(res), items: [] };
+}
+
+export async function deletePrediction(id) {
+  const res = await fetch(`/api/predictions/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+
+  if (res.status === 401) {
+    clearSession();
+    return { ok: false, status: 401, error: 'Session expired. Please sign in again.' };
+  }
+
+  if (res.ok) return { ok: true, status: res.status };
+
+  return { ok: false, status: res.status, error: await parseError(res) };
+}
+
 // Health / predict -------------------------------------------------
 
 export async function getHealth() {
