@@ -3,14 +3,21 @@ import bcrypt from 'bcryptjs';
 
 import { env } from '../config/env.js';
 import { User } from '../models/User.js';
-import { signToken } from '../services/tokenService.js';
+import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../services/tokenService.js';
 import { verifyGoogleCredential, googleConfigured, GoogleAuthError } from '../services/googleAuth.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function issue(user) {
-  const token = signToken({ sub: user.id, email: user.email, name: user.name });
-  return { token, user: { id: user.id, name: user.name, email: user.email, provider: user.provider } };
+  const payload = { sub: user.id, email: user.email, name: user.name };
+  const accessToken = signAccessToken(payload);
+  const refreshToken = signRefreshToken(payload);
+  return {
+    token: accessToken,
+    accessToken,
+    refreshToken,
+    user: { id: user.id, name: user.name, email: user.email, provider: user.provider },
+  };
 }
 
 function timingSafeEqualStr(a, b) {
@@ -151,4 +158,43 @@ export async function google(req, res, next) {
 export function me(req, res) {
   const { sub, email, name } = req.user || {};
   return res.status(200).json({ user: { id: sub, email, name } });
+}
+
+export async function refresh(req, res, next) {
+  try {
+    const refreshToken = req.body?.refreshToken;
+    if (!refreshToken) {
+      return res.status(422).json({ detail: 'Refresh token is required' });
+    }
+
+    let decoded;
+    try {
+      decoded = verifyRefreshToken(refreshToken);
+    } catch {
+      return res.status(401).json({ detail: 'Invalid or expired refresh token' });
+    }
+
+    const { sub, email, name } = decoded;
+
+    if (isDbConnected() && sub !== 'admin') {
+      const user = await User.findById(sub);
+      if (!user) {
+        return res.status(401).json({ detail: 'User not found' });
+      }
+      return res.status(200).json(issue(user));
+    }
+
+    const user = {
+      id: sub,
+      email,
+      name,
+      provider: sub === 'admin' ? 'admin' : 'local',
+      toPublic() {
+        return { id: this.id, email: this.email, name: this.name, provider: this.provider };
+      },
+    };
+    return res.status(200).json(issue(user));
+  } catch (err) {
+    return next(err);
+  }
 }

@@ -66,6 +66,8 @@ export const openApiSpec = {
         type: 'object',
         properties: {
           token: { type: 'string' },
+          accessToken: { type: 'string' },
+          refreshToken: { type: 'string' },
           user: {
             type: 'object',
             properties: { id: { type: 'string' }, name: { type: 'string' }, email: { type: 'string' } },
@@ -139,6 +141,24 @@ export const openApiSpec = {
     },
     '/api/auth/me': {
       get: { summary: 'Current user (requires auth)', security: bearer, responses: { 200: { description: 'OK' }, 401: { description: 'Unauthorized' } } },
+    },
+    '/api/auth/refresh': {
+      post: {
+        summary: 'Refresh access token using a valid refresh token',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['refreshToken'],
+                properties: { refreshToken: { type: 'string' } },
+              },
+            },
+          },
+        },
+        responses: { 200: { description: 'OK' }, 401: { description: 'Invalid or expired refresh token' }, 422: { description: 'Missing refresh token' } },
+      },
     },
     '/api/predict': {
       post: {

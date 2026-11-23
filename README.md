@@ -226,7 +226,7 @@ Every tracked file in this repository, grouped by area, with its purpose.
 | `.env.example` | Template for the Compose/root environment. Copy to `.env` and fill in. |
 | `.dockerignore` | Keeps the build context small and prevents leaking local files (`.venv`, `node_modules`, `.env`, `__pycache__`, etc.). |
 | `.gitignore` | Git exclusions (venvs, `node_modules`, `.env`, caches, local `mlruns/`, etc.). |
-| `Jenkinsfile` | Jenkins CI/CD (the only CI). On **every push** it runs the full automated test suite — backend (`node --test`), frontend (`vitest` + production build), and ML prediction-parity (`pytest`) — then builds the single image. On `main` it can push `udaynaik07/capstone-2` (`PUSH`) and/or run `docker compose up` (`DEPLOY`); an optional `RUN_E2E` stage runs the Selenium end-to-end test. |
+| `Jenkinsfile` | Jenkins CI/CD pipeline. Tests backend (`npm test`), builds frontend (`npm run build`), and builds the single unified application Docker image locally. |
 | `CLAUDE.md` | Guidance for AI coding assistants working in this repo. |
 
 ### `Website/backend/` — Express API
@@ -242,17 +242,17 @@ Every tracked file in this repository, grouped by area, with its purpose.
 | `src/config/env.js` | Centralised, typed env config (ports, Mongo URI, ML URL/timeout, embedded-ML flags, JWT, Google, admin login, `AUTH_REQUIRED`). |
 | `src/config/db.js` | Mongoose connection helpers (`connectDb`, `disconnectDb`, `dbState`) with a 5s server-selection timeout. |
 | `src/routes/health.routes.js` | `GET /api/health` route. |
-| `src/routes/auth.routes.js` | `POST /api/auth/register`, `/login`, `/google`, and `GET /me` (protected). |
+| `src/routes/auth.routes.js` | `POST /api/auth/register`, `/login`, `/google`, `/refresh`, and `GET /me` (protected). |
 | `src/routes/predict.routes.js` | `POST /api/predict` route (mounted behind the auth gate in `app.js`). |
 | `src/routes/history.routes.js` | `GET /api/predictions` (list current user's history) and `DELETE /api/predictions/:id` (delete one), both behind `requireAuth`. |
 | `src/controllers/health.controller.js` | Returns 200 when the ML service is up, else 503; includes DB state and ML metadata. |
-| `src/controllers/auth.controller.js` | Register / login / Google / me logic (bcrypt hashing, JWT issuance, DB or break-glass admin login). |
+| `src/controllers/auth.controller.js` | Register / login / Google / refresh / me logic (bcrypt hashing, JWT access + refresh token issuance, DB or break-glass admin login). |
 | `src/controllers/prediction.controller.js` | Validates the request, calls the ML client, persists the prediction best-effort with the owner's `userId` (never blocks the response), returns `{ prediction }`; plus `historyController` (list) and `deletePredictionController` (delete, scoped to the owner). |
-| `src/middleware/auth.js` | `requireAuth` — extracts and verifies the Bearer JWT, sets `req.user`, else 401. |
+| `src/middleware/auth.js` | `requireAuth` — extracts and verifies the Bearer JWT access token, sets `req.user`, else 401. |
 | `src/middleware/errorHandler.js` | `notFoundHandler` (404) and final `errorHandler` (500). |
 | `src/validation/customer.js` | Request validation mirroring the ML service's Pydantic schema; returns structured 422 errors without a network round-trip. |
 | `src/services/mlClient.js` | Factory for the ML HTTP client (`predict`, `health`) using global `fetch` + `AbortSignal.timeout`; throws typed `MlServiceError`. Injectable for tests. |
-| `src/services/tokenService.js` | JWT sign/verify; requires `JWT_SECRET` in production, random per-process fallback in dev. |
+| `src/services/tokenService.js` | JWT access & refresh token sign/verify; requires `JWT_SECRET` in production, random per-process fallback in dev. |
 | `src/services/googleAuth.js` | Verifies Google ID tokens via `google-auth-library`; reports whether Google auth is configured. |
 | `src/models/User.js` | Mongoose `User` schema (email/password and/or Google; unique email). |
 | `src/models/Prediction.js` | Mongoose `Prediction` schema — one auditable row per prediction (label, model id, exact customer payload, and `userId` of the authenticated caller, indexed for per-user history). |
@@ -334,8 +334,10 @@ Root `.env` (Compose / image) — see `.env.example`:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `JWT_SECRET` | *(required)* | Secret used to sign JWTs. Generate: `openssl rand -hex 32`. |
-| `JWT_EXPIRES_IN` | `7d` | Access-token lifetime. |
+| `JWT_SECRET` | *(required)* | Secret used to sign JWT access tokens. Generate: `openssl rand -hex 32`. |
+| `JWT_EXPIRES_IN` | `15m` | Access-token lifetime. |
+| `JWT_REFRESH_SECRET` | *(empty)* | Optional distinct secret for refresh tokens (defaults to derived secret). |
+| `JWT_REFRESH_EXPIRES_IN` | `7d` | Refresh-token lifetime. |
 | `CORS_ORIGIN` | `*` | Allowed CORS origin(s). |
 | `GOOGLE_CLIENT_ID` | *(empty)* | Backend Google OAuth client id (blank disables Google auth). |
 | `VITE_GOOGLE_CLIENT_ID` | *(empty)* | Frontend build-time Google client id (baked into the SPA). |
@@ -409,8 +411,10 @@ cd Website/frontend && npm test && npm run build
 cd "ML Model"
 ..\.venv\Scripts\python -m pytest services/ml/tests/test_parity.py
 
-# End-to-end (Selenium headless Chrome, from repo root; app must be running)
-..\.venv\Scripts\python.exe "ML Model\e2e\test_e2e.py"
+# End-to-end with SeleniumBase Live Dashboard (app must be running)
+..\.venv\Scripts\pytest "ML Model\e2e\test_e2e.py" --dashboard
+# Or run with visual highlighting / demo mode:
+# ..\.venv\Scripts\pytest "ML Model\e2e\test_e2e.py" --dashboard --demo
 ```
 
 A green run of all four proves: validation + API + auth (backend), UI + client
@@ -435,28 +439,20 @@ A green run of all four proves: validation + API + auth (backend), UI + client
 
 ## CI/CD
 
-CI/CD is **Jenkins only** (the `Jenkinsfile`). On **every push** the pipeline
-runs the full automated test suite, then builds and (on `main`) optionally
-publishes the single image:
+CI/CD is automated via **Jenkins** ([Jenkinsfile](Jenkinsfile)). The pipeline runs the test and build lifecycle and ends with creating the local Docker image:
 
-- **Test: Backend** — `npm ci && npm test` (`node --test`) in a `node:20` container.
-- **Test: Frontend** — `npm ci && npm test` (`vitest run`) **and** `npm run build` in a `node:20` container.
-- **Test: ML parity** — `pytest services/ml/tests` in a `python:3.11` container, with the bundled model staged at `/app/model` exactly as the `Dockerfile` does, so `src.serving.inference`'s import-time load resolves the same pinned model.
-- **Build Docker image** — builds the single root `Dockerfile`.
-- **Test: E2E** *(optional, `RUN_E2E`, main only)* — brings up the Compose stack and runs the Selenium test (`ML Model/e2e/test_e2e.py`) against it.
-- **Push image** *(main + `PUSH`, default on)* — `docker push` to Docker Hub via credential id `dockerhub-cred`.
-- **Deploy** *(main + `DEPLOY`, default off)* — `docker compose up -d`.
+- **Verify Docker** — Confirms the Docker daemon is accessible and running.
+- **Backend Install & Test** — `npm ci && npm test` in an isolated Node 20 container.
+- **Frontend Install & Build** — `npm ci && npm run build` in an isolated Node 20 container.
+- **Build Docker Image** — Builds and tags the single application container (`$APP_IMAGE:$BUILD_NUMBER` and `:latest`).
 
-**One-time job setup:** install a Docker-capable agent labelled `docker`, add a
-`dockerhub-cred` credential, and configure push triggering (GitHub webhook to
-`<jenkins>/github-webhook/`, or "Poll SCM"). See the header of the `Jenkinsfile`
-for details.
+No external Docker Hub credentials or remote push configurations are required.
 
 Builds use the single root `Dockerfile`.
 
-**Credential & environment checklist:**
-- `dockerhub-cred`: Jenkins username/password credential for Docker Hub push when `PUSH=true`.
-- `env-file` (optional): Secret file credential injected during the `Deploy` stage (`DEPLOY=true`) so `JWT_SECRET` and OAuth keys are never committed.
+**Jenkins agent prerequisites:**
+- Windows/PowerShell-capable Jenkins agent with Docker Engine / Docker Desktop running (the `Jenkinsfile` uses `powershell` steps and mounts `Website/backend` and `Website/frontend` into `node:20-bookworm-slim` containers).
+- Optional `VITE_GOOGLE_CLIENT_ID` environment variable configured in Jenkins if building the SPA with Google Sign-In enabled.
 
 ---
 
