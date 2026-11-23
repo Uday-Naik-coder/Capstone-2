@@ -40,6 +40,7 @@ services:
       NODE_ENV: production
       PORT: "4000"
       MONGODB_URI: mongodb://mongo:27017/telco_churn
+      # Embed FastAPI ML service as a child process on 127.0.0.1:8000 (/api/health waits for it)
       ML_EMBED: "1"
       ML_SERVICE_URL: http://127.0.0.1:8000
       ML_PORT: "8000"
