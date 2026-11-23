@@ -125,89 +125,40 @@ pipeline {
         }
 
         
-stage('Push to Docker Hub') {
-    when {
-        expression { params.PUSH }
-    }
+        stage('Push to Docker Hub') {
+            when {
+                expression { params.PUSH }
+            }
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-cred',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
+                    powershell '''
+                        $ErrorActionPreference = "Stop"
 
-    steps {
-        withCredentials([
-            usernamePassword(
-                credentialsId: 'dockerhub-cred',
-                usernameVariable: 'DOCKER_USER',
-                passwordVariable: 'DOCKER_PASS'
-            )
-        ]) {
-            powershell '''
-                $ErrorActionPreference = "Stop"
+                        $token = $env:DOCKER_PASS.Trim()
+                        $imageTag = "$($env:APP_IMAGE):$($env:BUILD_NUMBER)"
 
-                if ([string]::IsNullOrWhiteSpace($env:DOCKER_USER)) {
-                    throw "Docker username is empty"
+                        $token | docker login --username $env:DOCKER_USER --password-stdin
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "Docker Hub login failed"
+                        }
+
+                        docker push $imageTag
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "Docker image push failed"
+                        }
+
+                        docker logout
+                        Write-Host "Image pushed successfully: $imageTag"
+                    '''
                 }
-
-                if ([string]::IsNullOrWhiteSpace($env:DOCKER_PASS)) {
-                    throw "Docker token is empty"
-                }
-
-                Write-Host "Docker username: $env:DOCKER_USER"
-                Write-Host "Docker token received. Length: $($env:DOCKER_PASS.Length)"
-
-                # Start Docker login process
-                $dockerPath = (Get-Command docker.exe).Source
-
-                $psi = New-Object System.Diagnostics.ProcessStartInfo
-                $psi.FileName = $dockerPath
-                $psi.Arguments = "login --username `"$env:DOCKER_USER`" --password-stdin"
-                $psi.UseShellExecute = $false
-                $psi.RedirectStandardInput = $true
-                $psi.RedirectStandardOutput = $true
-                $psi.RedirectStandardError = $true
-                $psi.CreateNoWindow = $true
-
-                $process = New-Object System.Diagnostics.Process
-                $process.StartInfo = $psi
-
-                [void]$process.Start()
-
-                # Send token as UTF-8 input
-                $process.StandardInput.WriteLine($env:DOCKER_PASS)
-                $process.StandardInput.Close()
-
-                $stdout = $process.StandardOutput.ReadToEnd()
-                $stderr = $process.StandardError.ReadToEnd()
-
-                $process.WaitForExit()
-
-                if ($stdout) {
-                    Write-Host $stdout
-                }
-
-                if ($stderr) {
-                    Write-Host $stderr
-                }
-
-                if ($process.ExitCode -ne 0) {
-                    throw "Docker Hub authentication failed"
-                }
-
-                Write-Host "Docker Hub login successful!"
-
-                # Push image
-                $imageTag = "$($env:APP_IMAGE):$($env:BUILD_NUMBER)"
-
-                docker push $imageTag
-
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Docker image push failed"
-                }
-
-                Write-Host "Image pushed successfully: $imageTag"
-
-                docker logout
-            '''
+            }
         }
-    }
-}
 
 
         stage('Deploy') {
