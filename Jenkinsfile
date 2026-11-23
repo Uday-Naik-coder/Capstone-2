@@ -10,16 +10,17 @@ pipeline {
 
     environment {
         DOCKERHUB_USER = 'udaynaik07'
-        APP_IMAGE = 'udaynaik07/capstone-2'
-        NODE_IMAGE = 'node:20-bookworm-slim'
+        APP_IMAGE      = 'udaynaik07/capstone-2'
+        NODE_IMAGE     = 'node:20-bookworm-slim'
     }
 
     parameters {
         booleanParam(
             name: 'PUSH',
             defaultValue: true,
-            description: 'Push image to Docker Hub'
+            description: 'Push Docker image to Docker Hub'
         )
+
         booleanParam(
             name: 'DEPLOY',
             defaultValue: false,
@@ -28,9 +29,28 @@ pipeline {
     }
 
     stages {
+
         stage('Checkout') {
             steps {
-                echo 'Source code checked out automatically by Jenkins'
+                echo 'Source code checked out by Jenkins'
+            }
+        }
+
+        stage('Verify Docker') {
+            steps {
+                powershell '''
+                    $ErrorActionPreference = "Stop"
+
+                    docker --version
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Docker is not available"
+                    }
+
+                    docker info
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Docker daemon is not running or accessible"
+                    }
+                '''
             }
         }
 
@@ -39,14 +59,20 @@ pipeline {
                 powershell '''
                     $ErrorActionPreference = "Stop"
 
+                    $backendPath = Join-Path $env:WORKSPACE "Website\\backend"
+
+                    if (!(Test-Path $backendPath)) {
+                        throw "Backend directory not found: $backendPath"
+                    }
+
                     docker run --rm `
-                      --mount "type=bind,source=$env:WORKSPACE\\Website\\backend,target=/app" `
-                      -w /app `
-                      $env:NODE_IMAGE `
-                      sh -c "npm ci && npm test"
+                        --mount "type=bind,source=$backendPath,target=/app" `
+                        -w /app `
+                        $env:NODE_IMAGE `
+                        sh -c "npm ci && npm test"
 
                     if ($LASTEXITCODE -ne 0) {
-                        throw "Backend tests failed"
+                        throw "Backend installation or tests failed"
                     }
                 '''
             }
@@ -57,14 +83,20 @@ pipeline {
                 powershell '''
                     $ErrorActionPreference = "Stop"
 
+                    $frontendPath = Join-Path $env:WORKSPACE "Website\\frontend"
+
+                    if (!(Test-Path $frontendPath)) {
+                        throw "Frontend directory not found: $frontendPath"
+                    }
+
                     docker run --rm `
-                      --mount "type=bind,source=$env:WORKSPACE\\Website\\frontend,target=/app" `
-                      -w /app `
-                      $env:NODE_IMAGE `
-                      sh -c "npm ci && npm run build"
+                        --mount "type=bind,source=$frontendPath,target=/app" `
+                        -w /app `
+                        $env:NODE_IMAGE `
+                        sh -c "npm ci && npm run build"
 
                     if ($LASTEXITCODE -ne 0) {
-                        throw "Frontend build failed"
+                        throw "Frontend installation or build failed"
                     }
                 '''
             }
@@ -75,22 +107,30 @@ pipeline {
                 powershell '''
                     $ErrorActionPreference = "Stop"
 
+                    $imageTag = "$($env:APP_IMAGE):$($env:BUILD_NUMBER)"
+
                     docker build `
-                      -f Dockerfile `
-                      -t "$env:APP_IMAGE:$env:BUILD_NUMBER" `
-                      .
+                        -f Dockerfile `
+                        -t $imageTag `
+                        --build-arg "VITE_GOOGLE_CLIENT_ID=$env:VITE_GOOGLE_CLIENT_ID" `
+                        .
 
                     if ($LASTEXITCODE -ne 0) {
                         throw "Docker image build failed"
                     }
+
+                    Write-Host "Successfully built: $imageTag"
                 '''
             }
         }
 
         stage('Push to Docker Hub') {
             when {
-                expression { params.PUSH }
+                expression {
+                    return params.PUSH
+                }
             }
+
             steps {
                 withCredentials([
                     usernamePassword(
@@ -102,19 +142,36 @@ pipeline {
                     powershell '''
                         $ErrorActionPreference = "Stop"
 
+                        if ([string]::IsNullOrWhiteSpace($env:DOCKER_USER)) {
+                            throw "Docker Hub username is empty"
+                        }
+
+                        if ([string]::IsNullOrWhiteSpace($env:DOCKER_PASS)) {
+                            throw "Docker Hub token is empty"
+                        }
+
+                        Write-Host "Authenticating with Docker Hub..."
+
                         $env:DOCKER_PASS | docker login `
-                          -u $env:DOCKER_USER `
-                          --password-stdin
+                            --username $env:DOCKER_USER `
+                            --password-stdin 2>&1
 
-                        if ($LASTEXITCODE -ne 0) {
-                            throw "Docker login failed"
+                        $loginExitCode = $LASTEXITCODE
+
+                        if ($loginExitCode -ne 0) {
+                            throw "Docker Hub login failed with exit code $loginExitCode"
                         }
 
-                        docker push "$env:APP_IMAGE:$env:BUILD_NUMBER"
+                        Write-Host "Docker Hub login successful"
 
+                        $imageTag = "$($env:APP_IMAGE):$($env:BUILD_NUMBER)"
+
+                        docker push $imageTag
                         if ($LASTEXITCODE -ne 0) {
-                            throw "Docker push failed"
+                            throw "Docker image push failed"
                         }
+
+                        Write-Host "Successfully pushed: $imageTag"
 
                         docker logout
                     '''
@@ -124,14 +181,21 @@ pipeline {
 
         stage('Deploy') {
             when {
-                expression { params.DEPLOY }
+                expression {
+                    return params.DEPLOY
+                }
             }
+
             steps {
                 powershell '''
                     $ErrorActionPreference = "Stop"
 
+                    if (!(Test-Path "docker-compose.yml")) {
+                        throw "docker-compose.yml not found"
+                    }
+
                     if (!(Test-Path ".env")) {
-                        throw ".env file not found in workspace"
+                        throw ".env file not found"
                     }
 
                     $env:IMAGE_TAG = $env:BUILD_NUMBER
@@ -154,14 +218,18 @@ pipeline {
         }
 
         failure {
-            echo 'Pipeline failed. Check the console output.'
+            echo 'Pipeline failed. Check Console Output.'
         }
 
         always {
             powershell '''
-                docker image ls | Select-String "capstone-2"
+                docker image ls --filter "reference=udaynaik07/capstone-2:*"
             '''
-            cleanWs(deleteDirs: true, notFailBuild: true)
+
+            cleanWs(
+                deleteDirs: true,
+                notFailBuild: true
+            )
         }
     }
 }
