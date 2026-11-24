@@ -183,6 +183,59 @@ class TelcoChurnFullSuite(BaseCase):
         self._predict()
         self.wait_for_text("Not likely to churn", timeout=30)
 
+    def test_history_shows_prediction_after_predict(self):
+        email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
+        self._open_app()
+        self._register(email)
+        self._predict()
+        self.wait_for_text("Not likely to churn", timeout=30)
+        self.click("//button[normalize-space()='History']")
+        self.wait_for_text("Prediction history", timeout=30)
+        self.wait_for_text("Not likely to churn", timeout=15)
+
+    def test_multiple_predictions_accumulate_in_history(self):
+        email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
+        self._open_app()
+        self._register(email)
+        self._predict()
+        self.wait_for_text("Not likely to churn", timeout=30)
+        self._set_select("SeniorCitizen", "1")
+        self._predict()
+        self.wait_for_text("Likely to churn", timeout=30)
+        self.click("//button[normalize-space()='History']")
+        self.wait_for_text("Prediction history", timeout=30)
+        self.assert_element_visible("//span[contains(text(), 'Not likely to churn')]", timeout=15)
+        self.assert_element_visible("//span[contains(text(), 'Likely to churn')]", timeout=15)
+
+    def test_delete_history_entry_removes_it(self):
+        email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
+        self._open_app()
+        self._register(email)
+        self._predict()
+        self.wait_for_text("Not likely to churn", timeout=30)
+        self.click("//button[normalize-space()='History']")
+        self.wait_for_text("Prediction history", timeout=30)
+        self.wait_for_text("Not likely to churn", timeout=15)
+        self.click("//button[normalize-space()='Delete']")
+        self.wait_for_text("No predictions yet", timeout=15)
+
+    def test_history_refresh_button_reloads(self):
+        email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
+        self._open_app()
+        self._register(email)
+        self.click("//button[normalize-space()='History']")
+        self.wait_for_text("Prediction history", timeout=30)
+        self.click("//button[normalize-space()='Refresh']")
+        self.wait_for_text("Prediction history", timeout=30)
+
+    def test_history_empty_tab_shows_no_predictions(self):
+        email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
+        self._open_app()
+        self._register(email)
+        self.click("//button[normalize-space()='History']")
+        self.wait_for_text("Prediction history", timeout=30)
+        self.wait_for_text("No predictions yet", timeout=15)
+
 
 
 if __name__ == "__main__":
