@@ -411,8 +411,10 @@ cd Website/frontend && npm test && npm run build
 cd "ML Model"
 ..\.venv\Scripts\python -m pytest services/ml/tests/test_parity.py
 
-# End-to-end (Selenium headless Chrome, from repo root; app must be running)
-..\.venv\Scripts\python.exe "ML Model\e2e\test_e2e.py"
+# End-to-end with SeleniumBase Live Dashboard (app must be running)
+..\.venv\Scripts\pytest "ML Model\e2e\test_e2e.py" --dashboard
+# Or run with visual highlighting / demo mode:
+# ..\.venv\Scripts\pytest "ML Model\e2e\test_e2e.py" --dashboard --demo
 ```
 
 A green run of all four proves: validation + API + auth (backend), UI + client

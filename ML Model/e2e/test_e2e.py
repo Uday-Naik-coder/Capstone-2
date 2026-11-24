@@ -1,4 +1,4 @@
-"""Phase 6 end-to-end test (Selenium, headless Chrome).
+"""Phase 6 end-to-end test using SeleniumBase with Live Dashboard.
 
 Proves the full MERN chain in a real browser:
   React SPA (Vite) -> Express /api/predict -> pinned ML service (3b1a4122)
@@ -6,109 +6,67 @@ Proves the full MERN chain in a real browser:
 Flow:
   1. Load app (unauthenticated -> login page shown).
   2. Register a fresh account (email/password) -> auto-login -> protected form.
-  3. Predict with the default payload (SeniorCitizen = 0) -> "Not likely to churn".
+  3. Predict with default payload (SeniorCitizen = 0) -> "Not likely to churn".
   4. Flip SeniorCitizen to 1 -> "Likely to churn" (fixture row 6576, SC flip).
 
-Run:  .venv\Scripts\python.exe "ML Model\e2e\test_e2e.py"   (from repo root)
-Env:  E2E_BASE_URL (default http://localhost:5174)
+Features:
+  - Live Dashboard support with `--dashboard`
+  - Visual Demo mode with `--demo`
+  - Automated assertions, waits, and failure screenshot capture
+  - Can be run via pytest or directly with python
+
+Manual run commands:
+  pytest "ML Model/e2e/test_e2e.py" --dashboard
+  python "ML Model/e2e/test_e2e.py"
 """
 
 import os
 import sys
 import uuid
-
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait, Select
-from selenium.webdriver.support import expected_conditions as EC
-
-BASE_URL = os.environ.get("E2E_BASE_URL", "http://localhost:5174")
-CHROME_PATH = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
-TIMEOUT = 30
+from seleniumbase import BaseCase
 
 
-def build_driver():
-    opts = Options()
-    if os.path.exists(CHROME_PATH):
-        opts.binary_location = CHROME_PATH
-    opts.add_argument("--headless=new")
-    opts.add_argument("--window-size=1400,1000")
-    opts.add_argument("--no-sandbox")
-    opts.add_argument("--disable-dev-shm-usage")
-    opts.add_argument("--disable-gpu")
-    opts.add_argument("--log-level=3")
-    return webdriver.Chrome(options=opts)
-
-
-def wait_visible(driver, text, timeout=TIMEOUT):
-    WebDriverWait(driver, timeout).until(
-        EC.visibility_of_element_located(
-            (By.XPATH, f"//*[normalize-space(text())='{text}']")
-        )
-    )
-
-
-def click_predict(driver):
-    btn = WebDriverWait(driver, TIMEOUT).until(
-        EC.element_to_be_clickable((By.XPATH, "//button[text()='Predict churn']"))
-    )
-    btn.click()
-
-
-def main():
-    driver = build_driver()
-    try:
+class TelcoChurnE2ETest(BaseCase):
+    def test_churn_prediction_full_flow(self):
+        base_url = os.environ.get("E2E_BASE_URL", "http://localhost:8080")
         email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
         password = "Password123!"
 
-        # 1. Login page (unauthenticated)
-        driver.get(BASE_URL)
-        WebDriverWait(driver, TIMEOUT).until(
-            EC.element_to_be_clickable((By.XPATH, "//button[text()='Sign in']"))
-        )
-        print("[1] Login page rendered for unauthenticated user")
+        # 1. Open app (unauthenticated -> login page shown)
+        self.open(base_url)
+        self.wait_for_element_visible("//button[normalize-space()='Sign in']", timeout=30)
+        print(f"\n[1] App loaded at {base_url}; login page displayed")
 
         # 2. Register a fresh account -> auto-login -> protected form
-        driver.find_element(By.XPATH, "//button[text()='Create one']").click()
-        driver.find_element(By.CSS_SELECTOR, "input[placeholder='Jane Doe']").send_keys("E2E Tester")
-        driver.find_element(By.CSS_SELECTOR, "input[type='email']").send_keys(email)
-        driver.find_element(By.CSS_SELECTOR, "input[type='password']").send_keys(password)
-        driver.find_element(By.XPATH, "//button[text()='Create account']").click()
-        WebDriverWait(driver, TIMEOUT).until(
-            EC.element_to_be_clickable((By.XPATH, "//button[text()='Predict churn']"))
-        )
+        self.click("//button[normalize-space()='Create one']")
+        self.wait_for_element_visible("input[placeholder='Jane Doe']", timeout=15)
+        self.type("input[placeholder='Jane Doe']", "E2E Tester")
+        self.type("input[type='email']", email)
+        self.type("input[type='password']", password)
+        self.click("//button[normalize-space()='Create account']")
+
+        # Wait until authenticated and churn form is visible
+        self.wait_for_element_visible("//button[normalize-space()='Predict churn']", timeout=30)
         print(f"[2] Registered + logged in ({email}); protected form visible")
 
         # 3. Default payload (SeniorCitizen = 0)
-        click_predict(driver)
-        wait_visible(driver, "Not likely to churn")
-        print("[3] SeniorCitizen=0 -> 'Not likely to churn'")
+        self.click("//button[normalize-space()='Predict churn']")
+        self.wait_for_text("Not likely to churn", timeout=30)
+        print("[3] Default payload (SeniorCitizen=0) -> 'Not likely to churn'")
 
         # 4. Flip SeniorCitizen to 1
-        Select(driver.find_element(By.ID, "SeniorCitizen")).select_by_value("1")
-        click_predict(driver)
-        wait_visible(driver, "Likely to churn")
-        print("[4] SeniorCitizen=1 -> 'Likely to churn'")
+        self.select_option_by_value("#SeniorCitizen", "1")
+        self.click("//button[normalize-space()='Predict churn']")
+        self.wait_for_text("Likely to churn", timeout=30)
+        print("[4] Flipped SeniorCitizen=1 -> 'Likely to churn'")
 
-        print("E2E PASS")
-        return 0
-    except Exception:
-        import traceback
-
-        traceback.print_exc()
-        try:
-            os.makedirs("e2e", exist_ok=True)
-            shot = os.path.join("e2e", "failure.png")
-            driver.save_screenshot(shot)
-            print(f"Screenshot saved: {shot}")
-            print("PAGE SOURCE (truncated):\n", driver.page_source[:4000])
-        except Exception:
-            pass
-        return 1
-    finally:
-        driver.quit()
+        print("\nAll E2E checks passed successfully!")
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    import pytest
+    args = sys.argv[1:]
+    # Default to enabling live dashboard if not specified
+    if not any("--dashboard" in arg for arg in args):
+        args = ["--dashboard", "-v", "-s", *args]
+    sys.exit(pytest.main([__file__, *args]))
