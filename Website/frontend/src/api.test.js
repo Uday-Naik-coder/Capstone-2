@@ -1,6 +1,6 @@
 import { test, expect, beforeEach, vi } from 'vitest';
 
-import { predict, login, getToken, setSession, clearSession, getHistory, deletePrediction } from './api.js';
+import { predict, login, getToken, getRefreshToken, setSession, clearSession, refreshAuthToken, getHistory, deletePrediction } from './api.js';
 
 function mockResponse({ ok = true, status = 200, body = {} } = {}) {
   return {
@@ -96,6 +96,69 @@ test('clearSession removes the stored token and user', () => {
   expect(getToken()).toBe('');
   expect(localStorage.getItem('telco_user')).toBeNull();
 });
+
+test('setSession stores and clearSession removes refresh token', () => {
+  setSession('acc-1', { email: 'a@b.c' }, 'ref-1');
+  expect(getToken()).toBe('acc-1');
+  expect(getRefreshToken()).toBe('ref-1');
+  clearSession();
+  expect(getToken()).toBe('');
+  expect(getRefreshToken()).toBe('');
+});
+
+test('refreshAuthToken updates session with refreshed tokens on success', async () => {
+  setSession('acc-old', { email: 'user@test.com' }, 'ref-valid');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      mockResponse({
+        body: {
+          accessToken: 'acc-new',
+          refreshToken: 'ref-new',
+          user: { email: 'user@test.com', name: 'User' },
+        },
+      }),
+    ),
+  );
+
+  const res = await refreshAuthToken();
+  expect(res.ok).toBe(true);
+  expect(getToken()).toBe('acc-new');
+  expect(getRefreshToken()).toBe('ref-new');
+});
+
+test('predict automatically refreshes token on 401 and retries original request', async () => {
+  setSession('acc-expired', { email: 'u@test.com' }, 'ref-valid');
+
+  let callCount = 0;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url) => {
+      callCount += 1;
+      if (url === '/api/predict' && callCount === 1) {
+        return mockResponse({ ok: false, status: 401, body: { detail: 'Token expired' } });
+      }
+      if (url === '/api/auth/refresh') {
+        return mockResponse({
+          ok: true,
+          status: 200,
+          body: { accessToken: 'acc-fresh', refreshToken: 'ref-fresh', user: { email: 'u@test.com' } },
+        });
+      }
+      if (url === '/api/predict' && callCount === 3) {
+        return mockResponse({ ok: true, status: 200, body: { prediction: 'Likely to churn' } });
+      }
+      return mockResponse({ ok: false, status: 500 });
+    }),
+  );
+
+  const res = await predict({ SeniorCitizen: 1 });
+  expect(res.ok).toBe(true);
+  expect(res.prediction).toBe('Likely to churn');
+  expect(getToken()).toBe('acc-fresh');
+  expect(getRefreshToken()).toBe('ref-fresh');
+});
+
 
 // History -----------------------------------------------------------
 

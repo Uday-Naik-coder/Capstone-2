@@ -242,17 +242,17 @@ Every tracked file in this repository, grouped by area, with its purpose.
 | `src/config/env.js` | Centralised, typed env config (ports, Mongo URI, ML URL/timeout, embedded-ML flags, JWT, Google, admin login, `AUTH_REQUIRED`). |
 | `src/config/db.js` | Mongoose connection helpers (`connectDb`, `disconnectDb`, `dbState`) with a 5s server-selection timeout. |
 | `src/routes/health.routes.js` | `GET /api/health` route. |
-| `src/routes/auth.routes.js` | `POST /api/auth/register`, `/login`, `/google`, and `GET /me` (protected). |
+| `src/routes/auth.routes.js` | `POST /api/auth/register`, `/login`, `/google`, `/refresh`, and `GET /me` (protected). |
 | `src/routes/predict.routes.js` | `POST /api/predict` route (mounted behind the auth gate in `app.js`). |
 | `src/routes/history.routes.js` | `GET /api/predictions` (list current user's history) and `DELETE /api/predictions/:id` (delete one), both behind `requireAuth`. |
 | `src/controllers/health.controller.js` | Returns 200 when the ML service is up, else 503; includes DB state and ML metadata. |
-| `src/controllers/auth.controller.js` | Register / login / Google / me logic (bcrypt hashing, JWT issuance, DB or break-glass admin login). |
+| `src/controllers/auth.controller.js` | Register / login / Google / refresh / me logic (bcrypt hashing, JWT access + refresh token issuance, DB or break-glass admin login). |
 | `src/controllers/prediction.controller.js` | Validates the request, calls the ML client, persists the prediction best-effort with the owner's `userId` (never blocks the response), returns `{ prediction }`; plus `historyController` (list) and `deletePredictionController` (delete, scoped to the owner). |
-| `src/middleware/auth.js` | `requireAuth` — extracts and verifies the Bearer JWT, sets `req.user`, else 401. |
+| `src/middleware/auth.js` | `requireAuth` — extracts and verifies the Bearer JWT access token, sets `req.user`, else 401. |
 | `src/middleware/errorHandler.js` | `notFoundHandler` (404) and final `errorHandler` (500). |
 | `src/validation/customer.js` | Request validation mirroring the ML service's Pydantic schema; returns structured 422 errors without a network round-trip. |
 | `src/services/mlClient.js` | Factory for the ML HTTP client (`predict`, `health`) using global `fetch` + `AbortSignal.timeout`; throws typed `MlServiceError`. Injectable for tests. |
-| `src/services/tokenService.js` | JWT sign/verify; requires `JWT_SECRET` in production, random per-process fallback in dev. |
+| `src/services/tokenService.js` | JWT access & refresh token sign/verify; requires `JWT_SECRET` in production, random per-process fallback in dev. |
 | `src/services/googleAuth.js` | Verifies Google ID tokens via `google-auth-library`; reports whether Google auth is configured. |
 | `src/models/User.js` | Mongoose `User` schema (email/password and/or Google; unique email). |
 | `src/models/Prediction.js` | Mongoose `Prediction` schema — one auditable row per prediction (label, model id, exact customer payload, and `userId` of the authenticated caller, indexed for per-user history). |
@@ -334,8 +334,10 @@ Root `.env` (Compose / image) — see `.env.example`:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `JWT_SECRET` | *(required)* | Secret used to sign JWTs. Generate: `openssl rand -hex 32`. |
-| `JWT_EXPIRES_IN` | `7d` | Access-token lifetime. |
+| `JWT_SECRET` | *(required)* | Secret used to sign JWT access tokens. Generate: `openssl rand -hex 32`. |
+| `JWT_EXPIRES_IN` | `15m` | Access-token lifetime. |
+| `JWT_REFRESH_SECRET` | *(empty)* | Optional distinct secret for refresh tokens (defaults to derived secret). |
+| `JWT_REFRESH_EXPIRES_IN` | `7d` | Refresh-token lifetime. |
 | `CORS_ORIGIN` | `*` | Allowed CORS origin(s). |
 | `GOOGLE_CLIENT_ID` | *(empty)* | Backend Google OAuth client id (blank disables Google auth). |
 | `VITE_GOOGLE_CLIENT_ID` | *(empty)* | Frontend build-time Google client id (baked into the SPA). |

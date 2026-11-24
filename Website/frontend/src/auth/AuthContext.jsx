@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
-import { getToken, getStoredUser, setSession, clearSession, getMe, login as apiLogin, register as apiRegister, googleLogin as apiGoogleLogin } from '../api.js';
+import { getToken, getRefreshToken, getStoredUser, setSession, clearSession, getMe, login as apiLogin, register as apiRegister, googleLogin as apiGoogleLogin } from '../api.js';
 
 const AuthContext = createContext(null);
 
@@ -19,7 +19,7 @@ export function AuthProvider({ children }) {
       if (!alive) return;
       if (res.ok) {
         setUser(res.user);
-        setSession(getToken(), res.user);
+        setSession(getToken(), res.user, getRefreshToken());
       } else {
         clearSession();
         setUser(null);

@@ -50,6 +50,8 @@ test('POST /api/auth/login succeeds with configured admin creds (no DB)', async 
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.ok(body.token);
+    assert.ok(body.accessToken);
+    assert.ok(body.refreshToken);
     assert.equal(body.user.email, 'admin@telco.local');
   });
 });
@@ -109,5 +111,51 @@ test('GET /api/docs serves Swagger UI', async () => {
     assert.equal(res.status, 200);
     const html = await res.text();
     assert.ok(html.toLowerCase().includes('swagger'));
+  });
+});
+
+test('POST /api/auth/refresh succeeds with valid refresh token', async () => {
+  await withServer(app(), async (base) => {
+    const login = await postJson(`${base}/api/auth/login`, {
+      email: 'admin@telco.local',
+      password: 'secret123',
+    });
+    const { refreshToken } = await login.json();
+    assert.ok(refreshToken);
+
+    const refreshRes = await postJson(`${base}/api/auth/refresh`, { refreshToken });
+    assert.equal(refreshRes.status, 200);
+    const body = await refreshRes.json();
+    assert.ok(body.token);
+    assert.ok(body.accessToken);
+    assert.ok(body.refreshToken);
+    assert.equal(body.user.email, 'admin@telco.local');
+  });
+});
+
+test('POST /api/auth/refresh returns 422 if refreshToken is missing', async () => {
+  await withServer(app(), async (base) => {
+    const res = await postJson(`${base}/api/auth/refresh`, {});
+    assert.equal(res.status, 422);
+  });
+});
+
+test('POST /api/auth/refresh returns 401 on invalid refresh token', async () => {
+  await withServer(app(), async (base) => {
+    const res = await postJson(`${base}/api/auth/refresh`, { refreshToken: 'invalid.token.here' });
+    assert.equal(res.status, 401);
+  });
+});
+
+test('POST /api/auth/refresh rejects an access token passed as refresh token', async () => {
+  await withServer(app(), async (base) => {
+    const login = await postJson(`${base}/api/auth/login`, {
+      email: 'admin@telco.local',
+      password: 'secret123',
+    });
+    const { token } = await login.json();
+
+    const res = await postJson(`${base}/api/auth/refresh`, { refreshToken: token });
+    assert.equal(res.status, 401);
   });
 });
