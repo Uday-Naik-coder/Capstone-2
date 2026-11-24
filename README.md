@@ -226,7 +226,7 @@ Every tracked file in this repository, grouped by area, with its purpose.
 | `.env.example` | Template for the Compose/root environment. Copy to `.env` and fill in. |
 | `.dockerignore` | Keeps the build context small and prevents leaking local files (`.venv`, `node_modules`, `.env`, `__pycache__`, etc.). |
 | `.gitignore` | Git exclusions (venvs, `node_modules`, `.env`, caches, local `mlruns/`, etc.). |
-| `Jenkinsfile` | Jenkins CI/CD (the only CI). On **every push** it runs the full automated test suite — backend (`node --test`), frontend (`vitest` + production build), and ML prediction-parity (`pytest`) — then builds the single image. On `main` it can push `udaynaik07/capstone-2` (`PUSH`) and/or run `docker compose up` (`DEPLOY`); an optional `RUN_E2E` stage runs the Selenium end-to-end test. |
+| `Jenkinsfile` | Jenkins CI/CD pipeline. Tests backend (`npm test`), builds frontend (`npm run build`), and builds the single unified application Docker image locally. |
 | `CLAUDE.md` | Guidance for AI coding assistants working in this repo. |
 
 ### `Website/backend/` — Express API
@@ -437,22 +437,14 @@ A green run of all four proves: validation + API + auth (backend), UI + client
 
 ## CI/CD
 
-CI/CD is **Jenkins only** (the `Jenkinsfile`). On **every push** the pipeline
-runs the full automated test suite, then builds and (on `main`) optionally
-publishes the single image:
+CI/CD is automated via **Jenkins** ([Jenkinsfile](Jenkinsfile)). The pipeline runs the test and build lifecycle and ends with creating the local Docker image:
 
-- **Test: Backend** — `npm ci && npm test` (`node --test`) in a `node:20` container.
-- **Test: Frontend** — `npm ci && npm test` (`vitest run`) **and** `npm run build` in a `node:20` container.
-- **Test: ML parity** — `pytest services/ml/tests` in a `python:3.11` container, with the bundled model staged at `/app/model` exactly as the `Dockerfile` does, so `src.serving.inference`'s import-time load resolves the same pinned model.
-- **Build Docker image** — builds the single root `Dockerfile`.
-- **Test: E2E** *(optional, `RUN_E2E`, main only)* — brings up the Compose stack and runs the Selenium test (`ML Model/e2e/test_e2e.py`) against it.
-- **Push image** *(main + `PUSH`, default on)* — `docker push` to Docker Hub via credential id `dockerhub-cred`.
-- **Deploy** *(main + `DEPLOY`, default off)* — `docker compose up -d`.
+- **Verify Docker** — Confirms the Docker daemon is accessible and running.
+- **Backend Install & Test** — `npm ci && npm test` in an isolated Node 20 container.
+- **Frontend Install & Build** — `npm ci && npm run build` in an isolated Node 20 container.
+- **Build Docker Image** — Builds and tags the single application container (`$APP_IMAGE:$BUILD_NUMBER` and `:latest`).
 
-**One-time job setup:** install a Docker-capable agent labelled `docker`, add a
-`dockerhub-cred` credential, and configure push triggering (GitHub webhook to
-`<jenkins>/github-webhook/`, or "Poll SCM"). See the header of the `Jenkinsfile`
-for details.
+No external Docker Hub credentials or remote push configurations are required.
 
 Builds use the single root `Dockerfile`.
 

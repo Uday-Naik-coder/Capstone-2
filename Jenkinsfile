@@ -9,23 +9,8 @@ pipeline {
     }
 
     environment {
-        DOCKERHUB_USER = 'udaynaik07'
-        APP_IMAGE      = 'udaynaik07/capstone-2'
-        NODE_IMAGE     = 'node:20-bookworm-slim'
-    }
-
-    parameters {
-        booleanParam(
-            name: 'PUSH',
-            defaultValue: true,
-            description: 'Push Docker image to Docker Hub'
-        )
-
-        booleanParam(
-            name: 'DEPLOY',
-            defaultValue: false,
-            description: 'Deploy using Docker Compose'
-        )
+        APP_IMAGE  = 'udaynaik07/capstone-2'
+        NODE_IMAGE = 'node:20-bookworm-slim'
     }
 
     stages {
@@ -108,10 +93,12 @@ pipeline {
                     $ErrorActionPreference = "Stop"
 
                     $imageTag = "$($env:APP_IMAGE):$($env:BUILD_NUMBER)"
+                    $latestTag = "$($env:APP_IMAGE):latest"
 
                     docker build `
                         -f Dockerfile `
                         -t $imageTag `
+                        -t $latestTag `
                         --build-arg "VITE_GOOGLE_CLIENT_ID=$env:VITE_GOOGLE_CLIENT_ID" `
                         .
 
@@ -119,75 +106,8 @@ pipeline {
                         throw "Docker image build failed"
                     }
 
-                    Write-Host "Successfully built: $imageTag"
+                    Write-Host "Successfully built: $imageTag and $latestTag"
                 '''
-            }
-        }
-
-        
-        stage('Push to Docker Hub') {
-            when {
-                expression { params.PUSH }
-            }
-            steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'dockerhub-cred',
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_PASS'
-                    )
-                ]) {
-                    powershell '''
-                        $ErrorActionPreference = "Stop"
-
-                        $token = $env:DOCKER_PASS.Trim()
-                        $imageTag = "$($env:APP_IMAGE):$($env:BUILD_NUMBER)"
-
-                        $token | docker login --username $env:DOCKER_USER --password-stdin
-                        if ($LASTEXITCODE -ne 0) {
-                            throw "Docker Hub login failed"
-                        }
-
-                        docker push $imageTag
-                        if ($LASTEXITCODE -ne 0) {
-                            throw "Docker image push failed"
-                        }
-
-                        docker logout
-                        Write-Host "Image pushed successfully: $imageTag"
-                    '''
-                }
-            }
-        }
-
-
-        stage('Deploy') {
-            when {
-                expression { params.DEPLOY }
-            }
-            steps {
-                withCredentials([
-                    file(credentialsId: 'capstone-env-file', variable: 'ENV_FILE')
-                ]) {
-                    powershell '''
-                        $ErrorActionPreference = "Stop"
-
-                        if (!(Test-Path "docker-compose.yml")) {
-                            throw "docker-compose.yml not found"
-                        }
-
-                        Copy-Item -Path $env:ENV_FILE -Destination ".env" -Force
-
-                        $env:IMAGE_TAG = $env:BUILD_NUMBER
-
-                        docker compose -f docker-compose.yml up -d --remove-orphans
-                        if ($LASTEXITCODE -ne 0) {
-                            throw "Docker Compose deployment failed"
-                        }
-
-                        docker compose -f docker-compose.yml ps
-                    '''
-                }
             }
         }
     }
