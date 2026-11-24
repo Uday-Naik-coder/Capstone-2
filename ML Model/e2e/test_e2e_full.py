@@ -120,6 +120,69 @@ class TelcoChurnFullSuite(BaseCase):
         self._register(email)
         self.wait_for_text(email, timeout=10)
 
+    def test_default_payload_senior_citizen_zero_not_churn(self):
+        email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
+        self._open_app()
+        self._register(email)
+        self._predict()
+        self.wait_for_text("Not likely to churn", timeout=30)
+
+    def test_flip_senior_citizen_to_one_likely_churn(self):
+        email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
+        self._open_app()
+        self._register(email)
+        self._predict()
+        self.wait_for_text("Not likely to churn", timeout=30)
+        self._set_select("SeniorCitizen", "1")
+        self._predict()
+        self.wait_for_text("Likely to churn", timeout=30)
+
+    def test_two_year_contract_not_likely_churn(self):
+        email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
+        self._open_app()
+        self._register(email)
+        self._set_select("Contract", "Two year")
+        self._predict()
+        self.wait_for_text("Not likely to churn", timeout=30)
+
+    def test_fiber_optic_with_senior_citizen_likely_churn(self):
+        email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
+        self._open_app()
+        self._register(email)
+        self._set_select("InternetService", "Fiber optic")
+        self._set_select("SeniorCitizen", "1")
+        self._predict()
+        self.wait_for_text("Likely to churn", timeout=30)
+
+    def test_month_to_month_with_senior_citizen_likely_churn(self):
+        email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
+        self._open_app()
+        self._register(email)
+        self._set_select("Contract", "Month-to-month")
+        self._set_select("SeniorCitizen", "1")
+        self._predict()
+        self.wait_for_text("Likely to churn", timeout=30)
+
+    def test_fill_all_numeric_fields_produces_prediction(self):
+        email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
+        self._open_app()
+        self._register(email)
+        self._set_number("tenure", "70")
+        self._set_number("MonthlyCharges", "90.00")
+        self._set_number("TotalCharges", "6300.00")
+        self._predict()
+        self.wait_for_text("Not likely to churn", timeout=30)
+
+    def test_reset_button_restores_defaults(self):
+        email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
+        self._open_app()
+        self._register(email)
+        self._set_select("SeniorCitizen", "1")
+        self._set_select("Contract", "Two year")
+        self.click("//button[normalize-space()='Reset']")
+        self._predict()
+        self.wait_for_text("Not likely to churn", timeout=30)
+
 
 
 if __name__ == "__main__":
