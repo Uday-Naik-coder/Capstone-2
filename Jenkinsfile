@@ -163,37 +163,34 @@ pipeline {
 
         stage('Deploy') {
             when {
-                expression {
-                    return params.DEPLOY
-                }
+                expression { params.DEPLOY }
             }
-
             steps {
-                powershell '''
-                    $ErrorActionPreference = "Stop"
+                withCredentials([
+                    file(credentialsId: 'capstone-env-file', variable: 'ENV_FILE')
+                ]) {
+                    powershell '''
+                        $ErrorActionPreference = "Stop"
 
-                    if (!(Test-Path "docker-compose.yml")) {
-                        throw "docker-compose.yml not found"
-                    }
+                        if (!(Test-Path "docker-compose.yml")) {
+                            throw "docker-compose.yml not found"
+                        }
 
-                    if (!(Test-Path ".env")) {
-                        throw ".env file not found"
-                    }
+                        Copy-Item -Path $env:ENV_FILE -Destination ".env" -Force
 
-                    $env:IMAGE_TAG = $env:BUILD_NUMBER
+                        $env:IMAGE_TAG = $env:BUILD_NUMBER
 
-                    docker compose -f docker-compose.yml up -d --remove-orphans
+                        docker compose -f docker-compose.yml up -d --remove-orphans
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "Docker Compose deployment failed"
+                        }
 
-                    if ($LASTEXITCODE -ne 0) {
-                        throw "Docker Compose deployment failed"
-                    }
-
-                    docker compose -f docker-compose.yml ps
-                '''
+                        docker compose -f docker-compose.yml ps
+                    '''
+                }
             }
         }
     }
-
     post {
         success {
             echo 'Pipeline completed successfully!'
