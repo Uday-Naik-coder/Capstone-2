@@ -28,7 +28,7 @@ from seleniumbase import BaseCase
 
 class TelcoChurnE2ETest(BaseCase):
     def test_churn_prediction_full_flow(self):
-        base_url = os.environ.get("E2E_BASE_URL", "http://localhost:8080")
+        base_url = os.environ.get("E2E_BASE_URL", "http://localhost:5173")
         email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
         password = "Password123!"
 
