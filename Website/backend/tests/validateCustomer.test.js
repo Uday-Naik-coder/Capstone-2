@@ -98,3 +98,15 @@ test('rejects negative TotalCharges', () => {
   assert.equal(r.valid, false);
   assert.ok(r.errors.some((e) => e.loc[0] === 'TotalCharges'));
 });
+
+test('coerces string SeniorCitizen "0" to number 0', () => {
+  const r = validateCustomer({ ...VALID, SeniorCitizen: '0' });
+  assert.equal(r.valid, true);
+  assert.equal(r.value.SeniorCitizen, 0);
+});
+
+test('rejects invalid PaymentMethod enum value', () => {
+  const r = validateCustomer({ ...VALID, PaymentMethod: 'Cash' });
+  assert.equal(r.valid, false);
+  assert.ok(r.errors.some((e) => e.loc[0] === 'PaymentMethod' && e.type === 'enum'));
+});
