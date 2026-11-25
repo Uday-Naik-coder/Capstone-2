@@ -17,6 +17,7 @@ PASSWORD = "Password123!"
 
 
 class TelcoChurnFullSuite(BaseCase):
+    # ---------- helpers ----------
     def _open_app(self):
         self.open(BASE_URL)
         self.wait_for_element_visible("//button[normalize-space()='Sign in']", timeout=30)
@@ -56,6 +57,7 @@ class TelcoChurnFullSuite(BaseCase):
             str(value),
         )
 
+    # ---------- auth ----------
     def test_register_login_predict_default(self):
         email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
         self._open_app()
@@ -120,6 +122,7 @@ class TelcoChurnFullSuite(BaseCase):
         self._register(email)
         self.wait_for_text(email, timeout=10)
 
+    # ---------- prediction ----------
     def test_default_payload_senior_citizen_zero_not_churn(self):
         email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
         self._open_app()
@@ -183,6 +186,7 @@ class TelcoChurnFullSuite(BaseCase):
         self._predict()
         self.wait_for_text("Not likely to churn", timeout=30)
 
+    # ---------- history ----------
     def test_history_shows_prediction_after_predict(self):
         email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
         self._open_app()
@@ -236,6 +240,28 @@ class TelcoChurnFullSuite(BaseCase):
         self.wait_for_text("Prediction history", timeout=30)
         self.wait_for_text("No predictions yet", timeout=15)
 
+    # ---------- ui ----------
+    def test_health_badge_shows_backend_online(self):
+        email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
+        self._open_app()
+        self._register(email)
+        self.wait_for_text("Backend: online", timeout=15)
+
+    def test_predict_and_history_tabs_switch(self):
+        email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
+        self._open_app()
+        self._register(email)
+        self.click("//button[normalize-space()='History']")
+        self.wait_for_text("Prediction history", timeout=30)
+        self.click("//button[normalize-space()='Predict']")
+        self.wait_for_element_visible("//button[normalize-space()='Predict churn']", timeout=30)
+
+    def test_sign_out_returns_to_login_page(self):
+        email = f"e2e+{uuid.uuid4().hex[:10]}@example.com"
+        self._open_app()
+        self._register(email)
+        self._logout()
+        self.wait_for_element_visible("//button[normalize-space()='Create one']", timeout=15)
 
 
 if __name__ == "__main__":
